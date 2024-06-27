@@ -1,0 +1,158 @@
+module port-to-port-delay {
+    yang-version "1.1";
+
+    namespace urn:det6g:port-to-port-delay;
+       
+    prefix det6g;
+
+    import ieee802-types {
+        prefix ieee802;
+    }
+  
+    import ieee802-dot1q-types {
+        prefix dot1qtypes;
+    }
+
+    import ieee802-dot1q-bridge {
+        prefix dot1q-bridge;
+    }
+    
+    organization DETERMINISTIC6G;
+
+    contact "https://deterministic6g.eu/";
+
+    description
+        "A YANG model for modelling stochastic port-to-port delay.";
+
+    revision "2024-05-21" {
+        description "Initial revision";
+        reference "Deliverable D3.4 of DETERMINISTIC6G project";
+    }
+
+    grouping delay-histogram {
+        description
+            "Delay histogram";
+        leaf start {
+            type uint64;
+            description
+                "The start value of the first bin in nano-seconds.
+                If not specified, the first bin starts at 0.";
+        }
+        leaf bin-count {
+            type uint32;
+            mandatory true;
+            description
+                "Number of bins.";
+        }
+        list bin {
+            description
+                "Bins of histogram.";
+            key index;
+            leaf index {
+                type uint32;
+                mandatory true;
+                description
+                    "The index of this bin.";
+            }
+            leaf width {
+                type uint64;
+                mandatory true;
+                description
+                    "The width of this bin in nano-seconds.";
+            }
+            leaf count {
+                type uint32;
+                mandatory true;
+                description
+                    "Count of values in this bin.";
+            }
+        }
+        leaf tail {
+            type uint32;
+            description
+                "Count of values in the tail of the histogram
+                after the upper bound of last bin until infinity.
+                Can be used to define an unbounded distribution.";
+        }
+    }
+
+    augment "/dot1q-bridge:bridges/dot1q-bridge:bridge/dot1q-bridge:component" {
+        container port-to-port-delays {
+           config false;
+           list port-to-port-delay {
+                key "ingress-port egress-port traffic-class index";
+                leaf ingress-port {
+                    type dot1qtypes:port-number-type;
+                    config false;
+                    mandatory true;
+                    description
+                        "Unique number of ingress port.";
+                }
+                leaf egress-port {
+                    type dot1qtypes:port-number-type;
+                    config false;
+                    mandatory true;
+                    description
+                        "Unique number of egress port.";
+                }
+                leaf traffic-class {
+                    type dot1qtypes:traffic-class-type;
+                    config false;
+                    mandatory true;
+                    description
+                        "Traffic class (0..7)";
+                }
+                leaf index {
+                    type uint16;
+                    config false;
+                    mandatory true;
+                    description
+                        "Index to define multiple histograms per port-pair
+                        and traffic class.";
+                }
+                uses delay-histogram;
+            }
+            leaf dependency-class {
+                type enumeration {
+                    enum "independent";
+                    enum "dependent";
+                }
+                description
+                    "Are the given delays only applicable under certain
+                    conditions (e.g., for frames of certain length)?";
+            }
+            container validity-period {
+                container valid-from {
+                    description
+                        "Given delays are only valid at or after this
+                         point in time, specified as PTP timestamp.";
+                        uses ieee802:ptp-time-grouping;
+                }
+                container valid-until {
+                    description
+                        "Given delays are only valid until this
+                        point in time, specified as PTP timestamp.";
+                    uses ieee802:ptp-time-grouping;     
+                }
+            }
+        }
+    }
+
+    augment "/dot1q-bridge:bridges/dot1q-bridge:bridge/dot1q-bridge:component/port-to-port-delays" {
+        when "dependency-class = 'dependent'";
+	container dependencies {
+            container length-dependency {
+	        leaf min-frame-length {
+		    type uint32;
+		    description
+		        "Values apply only to frames equal or greater than this value.";
+		}
+		leaf max-frame-length {
+		    type uint32;
+		    description
+		        "Values apply only to frames equal or smaller than this value.";
+		}
+            }
+	}
+    }
+}
